@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Config Alat</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .filter-group { margin-bottom: 20px; }
+    canvas { max-width: 100%; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>Dashboard Config Alat</h1>
+
+  <div class="filter-group">
+    <label for="bulan">Bulan:</label>
+    <select id="bulan"></select>
+
+    <label for="pic">PIC:</label>
+    <select id="pic"></select>
+
+    <label for="status">Status:</label>
+    <select id="status">
+      <option value="">All</option>
+      <option value="PASS">PASS</option>
+      <option value="REJECTED">REJECTED</option>
+    </select>
+
+    <label for="koneksi">Koneksi:</label>
+    <select id="koneksi">
+      <option value="">All</option>
+      <option value="Online">Online</option>
+      <option value="Offline">Offline</option>
+    </select>
+  </div>
+
+  <canvas id="grafik-status"></canvas>
+  <canvas id="grafik-koneksi"></canvas>
+  <canvas id="grafik-pic"></canvas>
+
+  <script>
+    const url = 'https://docs.google.com/spreadsheets/d/1ph5T80kBuNzfBEdCqwZ6DgtLyKEXXXhrphke57_63gI/gviz/tq?tqx=out:json&sheet=Mei+2025';
+
+    let rawData = [];
+
+    async function fetchData() {
+      const res = await fetch(url);
+      const text = await res.text();
+      const json = JSON.parse(text.substr(47).slice(0, -2));
+
+      const cols = json.table.cols.map(c => c.label);
+      rawData = json.table.rows.map(r => {
+        const row = {};
+        cols.forEach((c, i) => {
+          row[c] = r.c[i] ? r.c[i].v : '';
+        });
+        return row;
+      });
+
+      initFilters();
+      updateCharts();
+    }
+
+    function getMonth(dateStr) {
+      const date = new Date(dateStr);
+      return `${date.getMonth()+1}-${date.getFullYear()}`;
+    }
+
+    function initFilters() {
+      const bulan = new Set();
+      const pic = new Set();
+
+      rawData.forEach(r => {
+        if (r['Date']) bulan.add(getMonth(r['Date']));
+        if (r['PIC']) pic.add(r['PIC']);
+      });
+
+      fillSelect('bulan', Array.from(bulan));
+      fillSelect('pic', Array.from(pic));
+
+      document.querySelectorAll('select').forEach(select => {
+        select.addEventListener('change', updateCharts);
+      });
+    }
+
+    function fillSelect(id, items) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = '<option value="">All</option>';
+      items.forEach(item => {
+        sel.innerHTML += `<option value="${item}">${item}</option>`;
+      });
+    }
+
+    function filterData() {
+      const fBulan = document.getElementById('bulan').value;
+      const fPic = document.getElementById('pic').value;
+      const fStatus = document.getElementById('status').value;
+      const fKoneksi = document.getElementById('koneksi').value;
+
+      return rawData.filter(r => {
+        const bulanMatch = fBulan ? getMonth(r['Date']) === fBulan : true;
+        const picMatch = fPic ? r['PIC'] === fPic : true;
+        const statusMatch = fStatus ? r['Status'] === fStatus : true;
+        const koneksiMatch = fKoneksi ? r['Connection'] === fKoneksi : true;
+        return bulanMatch && picMatch && statusMatch && koneksiMatch;
+      });
+    }
+
+    function updateCharts() {
+      const data = filterData();
+
+      const statusCounts = { PASS: 0, REJECTED: 0 };
+      const koneksiCounts = { Online: 0, Offline: 0 };
+      const picCounts = {};
+
+      data.forEach(r => {
+        statusCounts[r['Status']] = (statusCounts[r['Status']] || 0) + 1;
+        koneksiCounts[r['Connection']] = (koneksiCounts[r['Connection']] || 0) + 1;
+        picCounts[r['PIC']] = (picCounts[r['PIC']] || 0) + 1;
+      });
+
+      renderChart('grafik-status', 'Status', Object.keys(statusCounts), Object.values(statusCounts));
+      renderChart('grafik-koneksi', 'Koneksi', Object.keys(koneksiCounts), Object.values(koneksiCounts));
+      renderChart('grafik-pic', 'Jumlah per PIC', Object.keys(picCounts), Object.values(picCounts));
+    }
+
+    function renderChart(id, label, labels, data) {
+      const ctx = document.getElementById(id).getContext('2d');
+      if (window[id]) window[id].destroy();
+      window[id] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label, data, backgroundColor: 'steelblue' }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    fetchData();
+  </script>
+</body>
+</html>
